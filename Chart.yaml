@@ -1,0 +1,14 @@
+apiVersion: v2
+name: kubevirt-vm
+description: Helm chart for KubeVirt virtual machines
+type: application
+version: 0.1.0
+appVersion: "v1.8.1"
+keywords:
+  - kubevirt
+  - cdi
+  - virtualmachine
+  - vm
+home: https://github.com/anisimovdk/kubevirt-vm-chart
+maintainers:
+  - name: anisimovdk

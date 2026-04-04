@@ -1,0 +1,218 @@
+host: "argo-ci.cl.anisimov.dk"
+
+eventSource:
+  github:
+    repository: "anisimovdk/kubevirt-vm-chart"
+    events:
+      - push
+    filter:
+      expression: "body.ref == 'refs/heads/master'"
+
+sensor:
+  workflowArguments:
+    - name: repo_url
+    - name: revision
+  parameterMapping:
+    - src:
+        dependencyName: dep
+        dataKey: body.repository.clone_url
+      dest: spec.arguments.parameters.0.value
+    - src:
+        dependencyName: dep
+        dataKey: body.after
+      dest: spec.arguments.parameters.1.value
+
+externalSecrets:
+  webhook-secret:
+    create: true
+    data:
+      token:
+        key: ARGO_CI_WEBHOOK_TOKEN
+  api-token:
+    create: true
+    data:
+      token:
+        key: ARGO_CI_GITHUB_TOKEN
+  docker-hub-credentials:
+    create: true
+    data:
+      username:
+        key: ARGO_CI_REGISTRY_USER
+      password:
+        key: ARGO_CI_REGISTRY_PASS
+
+workflowTemplate:
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: repo_url
+      - name: revision
+
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: clone
+            template: git-clone
+          - name: package
+            depends: "clone"
+            template: helm-package
+            arguments:
+              artifacts:
+                - name: source
+                  from: "{{tasks.clone.outputs.artifacts.source}}"
+          - name: release
+            depends: "package"
+            template: github-release
+            arguments:
+              artifacts:
+                - name: charts
+                  from: "{{tasks.package.outputs.artifacts.charts}}"
+          - name: oci-push
+            depends: "package"
+            template: oci-push
+            arguments:
+              artifacts:
+                - name: charts
+                  from: "{{tasks.package.outputs.artifacts.charts}}"
+
+    - name: helm-package
+      inputs:
+        artifacts:
+          - name: source
+            path: /src
+      container:
+        image: alpine/helm:latest
+        workingDir: /src
+        command: [sh, -c]
+        args:
+          - |
+            mkdir -p /dist
+            echo "Linting chart..."
+            helm lint .
+            echo "Packaging chart..."
+            helm package . -d /dist/
+            ls -la /dist/
+      outputs:
+        artifacts:
+          - name: charts
+            path: /dist
+
+    - name: github-release
+      inputs:
+        artifacts:
+          - name: charts
+            path: /dist
+      container:
+        image: alpine/helm:latest
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: api-token
+                key: token
+        command: [sh, -c]
+        args:
+          - |
+            apk add --no-cache github-cli
+
+            for chart_file in /dist/*.tgz; do
+              if [ -f "$chart_file" ]; then
+                echo "Processing $chart_file..."
+
+                # Extract chart name and version from filename (format: name-version.tgz)
+                basename=$(basename "$chart_file" .tgz)
+                chart_name=$(echo "$basename" | rev | cut -d'-' -f2- | rev)
+                version=$(echo "$basename" | rev | cut -d'-' -f1 | rev)
+
+                # Extract metadata from chart
+                description=$(helm show chart "$chart_file" | grep '^description:' | sed 's/^description: //')
+                app_version=$(helm show chart "$chart_file" | grep '^appVersion:' | sed 's/^appVersion: //' | tr -d '"')
+
+                # Generate checksums
+                echo "Generating checksums..."
+                sha256sum "$chart_file" > "${chart_file}.sha256"
+                md5sum "$chart_file" > "${chart_file}.md5"
+                sha256=$(cat "${chart_file}.sha256" | cut -d' ' -f1)
+                md5=$(cat "${chart_file}.md5" | cut -d' ' -f1)
+
+                # Create GitHub release
+                tag="${chart_name}-v${version}"
+                echo "Checking release: $tag"
+
+                # Skip if release already exists
+                if gh release view "$tag" --repo anisimovdk/kubevirt-vm-chart >/dev/null 2>&1; then
+                  echo "Release $tag already exists. Skipping..."
+                  continue
+                fi
+
+                # Create new release
+                echo "Creating release: $tag"
+                gh release create "$tag" "$chart_file" "${chart_file}.sha256" "${chart_file}.md5" \
+                  --repo anisimovdk/kubevirt-vm-chart \
+                  --title "${chart_name} v${version}" \
+                  --notes "## Helm Chart Release
+
+            **Chart:** ${chart_name}
+            **Version:** ${version}
+            **App Version:** ${app_version}
+            **Description:** ${description}
+
+            ### Checksums
+            - **SHA256:** \`${sha256}\`
+            - **MD5:** \`${md5}\`
+
+            ---
+            Automated release from Argo Workflows"
+              fi
+            done
+
+    - name: oci-push
+      inputs:
+        artifacts:
+          - name: charts
+            path: /dist
+      container:
+        image: alpine/helm:latest
+        env:
+          - name: DOCKER_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: docker-hub-credentials
+                key: username
+          - name: DOCKER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: docker-hub-credentials
+                key: password
+        command: [sh, -c]
+        args:
+          - |
+            # Login to Docker Hub OCI registry
+            echo "Logging in to docker.io..."
+            echo "$DOCKER_PASSWORD" | helm registry login docker.io --username "$DOCKER_USERNAME" --password-stdin
+
+            # Push each chart to its own OCI repository
+            for chart_file in /dist/*.tgz; do
+              if [ -f "$chart_file" ]; then
+                echo "Processing $chart_file..."
+
+                # Extract chart name and version from filename
+                basename=$(basename "$chart_file" .tgz)
+                chart_name=$(echo "$basename" | rev | cut -d'-' -f2- | rev)
+                version=$(echo "$basename" | rev | cut -d'-' -f1 | rev)
+
+                # Check if OCI tag already exists
+                echo "Checking if oci://docker.io/anisimovdk/${chart_name}:${version} exists..."
+                if helm pull "oci://docker.io/anisimovdk/${chart_name}" --version "${version}" --destination /tmp >/dev/null 2>&1; then
+                  echo "OCI tag ${chart_name}:${version} already exists. Skipping..."
+                  continue
+                fi
+
+                # Push to OCI registry
+                echo "Pushing to oci://docker.io/anisimovdk/${chart_name}..."
+                helm push "$chart_file" "oci://docker.io/anisimovdk"
+              fi
+            done
+
+            echo "All charts pushed successfully!"

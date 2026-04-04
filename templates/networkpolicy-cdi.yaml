@@ -1,0 +1,49 @@
+{{- if and .Values.networkPolicy.enabled .Values.networkPolicy.cdi.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kubevirt-vm.fullname" . }}-cdi
+  labels:
+    {{- include "kubevirt-vm.labels" . | nindent 4 }}
+    {{- with .Values.networkPolicy.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.networkPolicy.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      app: containerized-data-importer
+      cdi.kubevirt.io: importer
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- with .Values.networkPolicy.cdi.ingress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app: containerized-data-importer
+  egress:
+    {{- with .Values.networkPolicy.cdi.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app: containerized-data-importer
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+{{- end }}

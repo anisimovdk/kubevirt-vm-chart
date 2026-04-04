@@ -1,0 +1,16 @@
+{{- if .Values.interfaces.bridge.enabled }}
+{{- $multusConfig := mustDeepCopy .Values.interfaces.bridge.config }}
+{{- $_ := set $multusConfig "name" (include "kubevirt-vm.bridgeNetworkAttachmentDefinitionName" .) }}
+{{- if not .Values.interfaces.masquerade.enabled }}
+{{- $_ := set $multusConfig "disableContainerInterface" true }}
+{{- end }}
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: {{ include "kubevirt-vm.bridgeNetworkAttachmentDefinitionName" . }}
+  labels:
+    {{- include "kubevirt-vm.labels" . | nindent 4 }}
+spec:
+  config: |
+    {{- $multusConfig | mustToPrettyJson | nindent 4 }}
+{{- end }}

@@ -1,0 +1,300 @@
+{{- $cloudInitVolumeEnabled := or .Values.cloudInit.enabled .Values.ssh.enabled -}}
+{{- $userDataMode := include "kubevirt-vm.cloudInitUserDataMode" . -}}
+{{- $networkDataMode := include "kubevirt-vm.cloudInitNetworkDataMode" . -}}
+{{- $sourceType := .Values.rootVolume.source.type -}}
+{{- if not (or (eq .Values.cloudInit.type "noCloud") (eq .Values.cloudInit.type "configDrive")) -}}
+{{- fail (printf "unsupported cloudInit.type %q" .Values.cloudInit.type) -}}
+{{- end -}}
+{{- if and (ne $userDataMode "generated") (gt (len .Values.cloudInit.firstBoot.commands) 0) -}}
+{{- fail "cloudInit.firstBoot.commands cannot be combined with cloudInit.userData, cloudInit.userDataBase64, or cloudInit.userDataSecretRef" -}}
+{{- end -}}
+{{- if and .Values.rootVolume.sourceRef.enabled (not .Values.rootVolume.sourceRef.name) -}}
+{{- fail "rootVolume.sourceRef.name must be set when rootVolume.sourceRef.enabled=true" -}}
+{{- end -}}
+{{- if and (not .Values.rootVolume.sourceRef.enabled) (not (or (eq $sourceType "blank") (eq $sourceType "http") (eq $sourceType "registry") (eq $sourceType "s3") (eq $sourceType "gcs") (eq $sourceType "pvc") (eq $sourceType "snapshot") (eq $sourceType "upload") (eq $sourceType "imageio") (eq $sourceType "vddk"))) -}}
+{{- fail (printf "unsupported rootVolume.source.type %q" $sourceType) -}}
+{{- end -}}
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ include "kubevirt-vm.fullname" . }}
+  labels:
+    {{- include "kubevirt-vm.labels" . | nindent 4 }}
+    {{- with .Values.virtualMachine.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.virtualMachine.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  runStrategy: {{ .Values.virtualMachine.runStrategy }}
+  dataVolumeTemplates:
+    - apiVersion: cdi.kubevirt.io/v1beta1
+      kind: DataVolume
+      metadata:
+        name: {{ include "kubevirt-vm.rootDataVolumeName" . }}
+        labels:
+          {{- include "kubevirt-vm.labels" . | nindent 10 }}
+          {{- with .Values.rootVolume.labels }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        {{- with .Values.rootVolume.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        {{- if .Values.rootVolume.contentType }}
+        contentType: {{ .Values.rootVolume.contentType }}
+        {{- end }}
+        {{- if .Values.rootVolume.preallocation }}
+        preallocation: true
+        {{- end }}
+        {{- if .Values.rootVolume.priorityClassName }}
+        priorityClassName: {{ .Values.rootVolume.priorityClassName }}
+        {{- end }}
+        storage:
+          accessModes:
+            {{- toYaml .Values.rootVolume.storage.accessModes | nindent 12 }}
+          {{- if .Values.rootVolume.storage.storageClassName }}
+          storageClassName: {{ .Values.rootVolume.storage.storageClassName }}
+          {{- end }}
+          {{- if .Values.rootVolume.storage.volumeMode }}
+          volumeMode: {{ .Values.rootVolume.storage.volumeMode }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.rootVolume.storage.resources | nindent 12 }}
+        {{- if .Values.rootVolume.sourceRef.enabled }}
+        sourceRef:
+          kind: {{ .Values.rootVolume.sourceRef.kind }}
+          name: {{ .Values.rootVolume.sourceRef.name }}
+          {{- if .Values.rootVolume.sourceRef.namespace }}
+          namespace: {{ .Values.rootVolume.sourceRef.namespace }}
+          {{- end }}
+        {{- else }}
+        source:
+          {{- if eq $sourceType "blank" }}
+          blank: {}
+          {{- else if eq $sourceType "http" }}
+          http:
+            url: {{ required "rootVolume.source.http.url is required when rootVolume.source.type=http" .Values.rootVolume.source.http.url }}
+            {{- if .Values.rootVolume.source.http.secretRef }}
+            secretRef: {{ .Values.rootVolume.source.http.secretRef }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.http.certConfigMap }}
+            certConfigMap: {{ .Values.rootVolume.source.http.certConfigMap }}
+            {{- end }}
+            {{- with .Values.rootVolume.source.http.extraHeaders }}
+            extraHeaders:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- with .Values.rootVolume.source.http.secretExtraHeaders }}
+            secretExtraHeaders:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- else if eq $sourceType "registry" }}
+          registry:
+            {{- if .Values.rootVolume.source.registry.url }}
+            url: {{ .Values.rootVolume.source.registry.url }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.registry.imageStream }}
+            imageStream: {{ .Values.rootVolume.source.registry.imageStream }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.registry.pullMethod }}
+            pullMethod: {{ .Values.rootVolume.source.registry.pullMethod }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.registry.secretRef }}
+            secretRef: {{ .Values.rootVolume.source.registry.secretRef }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.registry.certConfigMap }}
+            certConfigMap: {{ .Values.rootVolume.source.registry.certConfigMap }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.registry.platform.architecture }}
+            platform:
+              architecture: {{ .Values.rootVolume.source.registry.platform.architecture }}
+            {{- end }}
+          {{- else if eq $sourceType "s3" }}
+          s3:
+            url: {{ required "rootVolume.source.s3.url is required when rootVolume.source.type=s3" .Values.rootVolume.source.s3.url }}
+            {{- if .Values.rootVolume.source.s3.secretRef }}
+            secretRef: {{ .Values.rootVolume.source.s3.secretRef }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.s3.certConfigMap }}
+            certConfigMap: {{ .Values.rootVolume.source.s3.certConfigMap }}
+            {{- end }}
+          {{- else if eq $sourceType "gcs" }}
+          gcs:
+            url: {{ required "rootVolume.source.gcs.url is required when rootVolume.source.type=gcs" .Values.rootVolume.source.gcs.url }}
+            {{- if .Values.rootVolume.source.gcs.secretRef }}
+            secretRef: {{ .Values.rootVolume.source.gcs.secretRef }}
+            {{- end }}
+          {{- else if eq $sourceType "pvc" }}
+          pvc:
+            name: {{ required "rootVolume.source.pvc.name is required when rootVolume.source.type=pvc" .Values.rootVolume.source.pvc.name }}
+            namespace: {{ required "rootVolume.source.pvc.namespace is required when rootVolume.source.type=pvc" .Values.rootVolume.source.pvc.namespace }}
+          {{- else if eq $sourceType "snapshot" }}
+          snapshot:
+            name: {{ required "rootVolume.source.snapshot.name is required when rootVolume.source.type=snapshot" .Values.rootVolume.source.snapshot.name }}
+            namespace: {{ required "rootVolume.source.snapshot.namespace is required when rootVolume.source.type=snapshot" .Values.rootVolume.source.snapshot.namespace }}
+          {{- else if eq $sourceType "upload" }}
+          upload: {}
+          {{- else if eq $sourceType "imageio" }}
+          imageio:
+            url: {{ required "rootVolume.source.imageio.url is required when rootVolume.source.type=imageio" .Values.rootVolume.source.imageio.url }}
+            diskId: {{ required "rootVolume.source.imageio.diskId is required when rootVolume.source.type=imageio" .Values.rootVolume.source.imageio.diskId }}
+            {{- if .Values.rootVolume.source.imageio.secretRef }}
+            secretRef: {{ .Values.rootVolume.source.imageio.secretRef }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.imageio.certConfigMap }}
+            certConfigMap: {{ .Values.rootVolume.source.imageio.certConfigMap }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.imageio.insecureSkipVerify }}
+            insecureSkipVerify: true
+            {{- end }}
+          {{- else if eq $sourceType "vddk" }}
+          vddk:
+            {{- if .Values.rootVolume.source.vddk.url }}
+            url: {{ .Values.rootVolume.source.vddk.url }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.vddk.uuid }}
+            uuid: {{ .Values.rootVolume.source.vddk.uuid }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.vddk.backingFile }}
+            backingFile: {{ .Values.rootVolume.source.vddk.backingFile }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.vddk.secretRef }}
+            secretRef: {{ .Values.rootVolume.source.vddk.secretRef }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.vddk.thumbprint }}
+            thumbprint: {{ .Values.rootVolume.source.vddk.thumbprint }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.vddk.initImageURL }}
+            initImageURL: {{ .Values.rootVolume.source.vddk.initImageURL }}
+            {{- end }}
+            {{- if .Values.rootVolume.source.vddk.extraArgs }}
+            extraArgs: {{ .Values.rootVolume.source.vddk.extraArgs }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+  template:
+    metadata:
+      annotations:
+        vm.kubevirt.io/flavor: {{ .Values.os.flavor }}
+        vm.kubevirt.io/os: {{ .Values.os.name }}
+        vm.kubevirt.io/workload: {{ .Values.os.workload }}
+      labels:
+        {{- include "kubevirt-vm.selectorLabels" . | nindent 8 }}
+        {{- with .Values.virtualMachine.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.networkPolicy.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if and .Values.ssh.enabled .Values.ssh.pubkeys }}
+      accessCredentials:
+        {{- range $nameSuffix, $_ := .Values.ssh.pubkeys }}
+        - sshPublicKey:
+            source:
+              secret:
+                secretName: {{ include "kubevirt-vm.fullname" $ }}-sshkey-{{ $nameSuffix }}
+            propagationMethod:
+              {{- if eq $.Values.cloudInit.type "configDrive" }}
+              configDrive: {}
+              {{- else }}
+              noCloud: {}
+              {{- end }}
+        {{- end }}
+      {{- end }}
+      domain:
+        cpu:
+          cores: {{ .Values.cpu.cores }}
+          sockets: {{ .Values.cpu.sockets }}
+          threads: {{ .Values.cpu.threads }}
+        devices:
+          disks:
+            - name: rootdisk
+              bootOrder: {{ .Values.rootVolume.bootOrder }}
+              {{- if .Values.rootVolume.disk.cache }}
+              cache: {{ .Values.rootVolume.disk.cache }}
+              {{- end }}
+              {{- if .Values.rootVolume.disk.io }}
+              io: {{ .Values.rootVolume.disk.io }}
+              {{- end }}
+              {{- if .Values.rootVolume.disk.errorPolicy }}
+              errorPolicy: {{ .Values.rootVolume.disk.errorPolicy }}
+              {{- end }}
+              {{- if .Values.rootVolume.disk.dedicatedIOThread }}
+              dedicatedIOThread: true
+              {{- end }}
+              {{- if .Values.rootVolume.disk.shareable }}
+              shareable: true
+              {{- end }}
+              disk:
+                bus: {{ .Values.rootVolume.disk.bus }}
+            {{- if $cloudInitVolumeEnabled }}
+            - name: cloudinitdisk
+              disk:
+                bus: {{ .Values.cloudInit.disk.bus }}
+            {{- end }}
+          interfaces:
+            {{- if .Values.interfaces.masquerade.enabled }}
+            - name: {{ .Values.interfaces.masquerade.name }}
+              masquerade: {}
+              model: {{ .Values.interfaces.masquerade.model }}
+            {{- end }}
+            {{- if .Values.interfaces.bridge.enabled }}
+            - name: {{ .Values.interfaces.bridge.name }}
+              bridge: {}
+              model: {{ .Values.interfaces.bridge.model }}
+            {{- end }}
+          rng: {}
+        memory:
+          guest: {{ .Values.memory }}
+      {{- if .Values.virtualMachine.hostname }}
+      hostname: {{ .Values.virtualMachine.hostname }}
+      {{- end }}
+      networks:
+        {{- if .Values.interfaces.masquerade.enabled }}
+        - name: {{ .Values.interfaces.masquerade.name }}
+          pod: {}
+        {{- end }}
+        {{- if .Values.interfaces.bridge.enabled }}
+        - name: {{ .Values.interfaces.bridge.name }}
+          multus:
+            networkName: {{ include "kubevirt-vm.bridgeNetworkAttachmentDefinitionName" . }}
+        {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.virtualMachine.terminationGracePeriodSeconds }}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: {{ include "kubevirt-vm.rootDataVolumeName" . }}
+        {{- if $cloudInitVolumeEnabled }}
+        - name: cloudinitdisk
+          {{- if eq .Values.cloudInit.type "configDrive" }}
+          cloudInitConfigDrive:
+          {{- else }}
+          cloudInitNoCloud:
+          {{- end }}
+            {{- if eq $userDataMode "secretRef" }}
+            secretRef:
+              name: {{ .Values.cloudInit.userDataSecretRef }}
+            {{- else if eq $userDataMode "userDataBase64" }}
+            userDataBase64: {{ .Values.cloudInit.userDataBase64 }}
+            {{- else if eq $userDataMode "userData" }}
+            userData: |-
+              {{- .Values.cloudInit.userData | nindent 14 }}
+            {{- else }}
+            userData: |-
+              {{- include "kubevirt-vm.generatedUserData" . | nindent 14 }}
+            {{- end }}
+            {{- if eq $networkDataMode "secretRef" }}
+            networkDataSecretRef:
+              name: {{ .Values.cloudInit.networkDataSecretRef }}
+            {{- else if eq $networkDataMode "networkDataBase64" }}
+            networkDataBase64: {{ .Values.cloudInit.networkDataBase64 }}
+            {{- else if eq $networkDataMode "networkData" }}
+            networkData: |-
+              {{- .Values.cloudInit.networkData | nindent 14 }}
+            {{- end }}
+        {{- end }}

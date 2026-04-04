@@ -1,0 +1,302 @@
+# Override the chart name used in resource names. Defaults to the chart name.
+nameOverride: ""
+# Override the full resource name prefix. Defaults to "<release-name>-<chart-name>".
+fullnameOverride: ""
+
+# -- VirtualMachine resource settings
+virtualMachine:
+  # Extra annotations to add to the VirtualMachine resource.
+  annotations: {}
+  # Extra labels to add to the VirtualMachine resource.
+  labels: {}
+  # Hostname assigned to the guest OS. Defaults to the release name if empty.
+  hostname: ""
+  # Controls VM power state lifecycle.
+  # One of: Always, Halted, Manual, RerunOnFailure, Once.
+  # "Always" keeps the VM running and restarts it on failure (replaces deprecated spec.running: true).
+  runStrategy: Always
+  # Seconds the virt-controller waits for the guest to shut down gracefully before forcing off.
+  terminationGracePeriodSeconds: 180
+
+# -- OS instance type labels
+# Used as scheduling / informational labels on the VirtualMachine.
+# Maps to kubevirt.io/os, flavor.template.kubevirt.io/<flavor>, and workload.template.kubevirt.io/<workload>.
+os:
+  # Guest OS identifier (e.g. ubuntu, fedora, windows).
+  name: ubuntu
+  # T-shirt size hint (e.g. tiny, small, medium, large, xlarge).
+  flavor: small
+  # Workload type hint (e.g. server, desktop, highperformance).
+  workload: server
+
+# -- Guest vCPU topology
+cpu:
+  # Number of cores per socket.
+  cores: 1
+  # Number of CPU sockets.
+  sockets: 1
+  # Number of threads per core.
+  threads: 1
+
+# -- Guest RAM (e.g. 2Gi, 512Mi).
+memory: 2Gi
+
+# -- Root boot disk (DataVolume)
+rootVolume:
+  # Extra annotations to add to the DataVolume resource.
+  annotations: {}
+  # Extra labels to add to the DataVolume resource.
+  labels: {}
+  # Boot order index for this disk (1 = first).
+  bootOrder: 1
+  # CDI content type: "kubevirt" for VM images, "archive" for tar archives.
+  contentType: kubevirt
+  # Pre-allocate storage on the target PV for better I/O performance (increases provisioning time).
+  preallocation: false
+  # PriorityClass for the CDI importer pod. Leave empty for the cluster default.
+  priorityClassName: ""
+  # Disk device configuration inside the VM.
+  disk:
+    # Disk bus type: virtio (fastest), sata, scsi.
+    bus: virtio
+    # Disk cache mode: "", none, writethrough, writeback.
+    cache: ""
+    # I/O mode: "", native, threads.
+    io: ""
+    # Pin a dedicated I/O thread to this disk for lower latency.
+    dedicatedIOThread: false
+    # Allow multiple VMs to share this disk (requires ReadWriteMany PV).
+    shareable: false
+    # Error policy on I/O failure: "", stop, report, ignore, enospace.
+    errorPolicy: ""
+  # PersistentVolumeClaim spec for the DataVolume storage.
+  storage:
+    # PV access modes. ReadWriteOnce is sufficient for single-node VMs.
+    accessModes:
+      - ReadWriteOnce
+    # StorageClass name. Leave empty to use the cluster default.
+    storageClassName: ""
+    # Volume mode: Filesystem or Block.
+    volumeMode: Filesystem
+    resources:
+      requests:
+        # Disk size. Must be >= the uncompressed image size.
+        storage: 10Gi
+  # -- CDI data source (mutually exclusive with sourceRef).
+  # Set source.type to one of: blank, http, registry, s3, gcs, pvc, snapshot, upload, imageio, vddk.
+  # Only the sub-key matching source.type is used; all others are ignored.
+  source:
+    # Active source type. Must match one of the keys below.
+    type: http
+    # blank: create an empty disk (no import). No additional fields required.
+    blank: {}
+    # http: import from a URL (HTTP/HTTPS). Most common for cloud images.
+    http:
+      # URL to the disk image.
+      url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+      # Secret name containing HTTP basic-auth credentials (key: accessKeyId / secretKey).
+      secretRef: ""
+      # ConfigMap name with additional CA certificates for TLS verification.
+      certConfigMap: ""
+      # Static extra HTTP request headers.
+      extraHeaders: []
+      # Secret name whose values are added as HTTP request headers (sensitive headers).
+      secretExtraHeaders: []
+    # registry: import from a container image registry.
+    registry:
+      # Registry URL including image and tag (e.g. docker://registry.example.com/image:tag).
+      url: ""
+      # OpenShift ImageStream name (OpenShift only).
+      imageStream: ""
+      # Image pull method: "" (default), pod.
+      pullMethod: ""
+      # Secret name with registry credentials (docker config JSON).
+      secretRef: ""
+      # ConfigMap name with CA certificates for registry TLS.
+      certConfigMap: ""
+      platform:
+        # Target CPU architecture (e.g. amd64, arm64). Leave empty for host architecture.
+        architecture: ""
+    # s3: import from an S3-compatible object store.
+    s3:
+      # S3 endpoint URL including bucket and object key.
+      url: ""
+      # Secret name with S3 credentials (accessKeyId / secretKey).
+      secretRef: ""
+      # ConfigMap name with CA certificates for S3 TLS.
+      certConfigMap: ""
+    # gcs: import from Google Cloud Storage.
+    gcs:
+      # GCS object URL (gs://bucket/object).
+      url: ""
+      # Secret name with GCS service account key JSON (key: serviceAccount).
+      secretRef: ""
+    # pvc: clone an existing PersistentVolumeClaim.
+    pvc:
+      # Name of the source PVC.
+      name: ""
+      # Namespace of the source PVC. Defaults to the release namespace if empty.
+      namespace: ""
+    # snapshot: restore from a VolumeSnapshot.
+    snapshot:
+      # Name of the VolumeSnapshot.
+      name: ""
+      # Namespace of the VolumeSnapshot. Defaults to the release namespace if empty.
+      namespace: ""
+    # upload: provision via CDI upload proxy (e.g. virtctl image-upload). No additional fields required.
+    upload: {}
+    # imageio: import from oVirt / RHV via the imageio API.
+    imageio:
+      # imageio endpoint URL.
+      url: ""
+      # Disk ID on the imageio server.
+      diskId: ""
+      # Secret name with imageio credentials.
+      secretRef: ""
+      # ConfigMap name with CA certificates for imageio TLS.
+      certConfigMap: ""
+      # Skip TLS certificate verification (not recommended for production).
+      insecureSkipVerify: false
+    # vddk: import from VMware vSphere via VDDK (requires the VDDK init image).
+    vddk:
+      # vCenter/ESXi URL (e.g. https://vcenter.example.com/sdk).
+      url: ""
+      # VM UUID on vSphere.
+      uuid: ""
+      # VMDK backing file path on the datastore.
+      backingFile: ""
+      # Secret name with vSphere credentials (user / password).
+      secretRef: ""
+      # SSL thumbprint of the vSphere host certificate.
+      thumbprint: ""
+      # VDDK init container image (e.g. registry.example.com/vddk:8.0).
+      initImageURL: ""
+      # Extra arguments passed to the VDDK importer.
+      extraArgs: ""
+  # -- DataSource reference (mutually exclusive with source).
+  # Use sourceRef to provision from a pre-existing CDI DataSource (e.g. maintained by an admin).
+  sourceRef:
+    # Set to true to use a DataSource instead of a direct source.
+    enabled: false
+    # DataSource kind (currently only DataSource is supported).
+    kind: DataSource
+    # Name of the DataSource resource.
+    name: ""
+    # Namespace of the DataSource. Defaults to the release namespace if empty.
+    namespace: ""
+
+# -- cloud-init configuration
+cloudInit:
+  # Enable cloud-init disk injection. Disable only if the image handles provisioning another way.
+  enabled: true
+  # Datasource type presented to the guest: noCloud or configDrive.
+  # noCloud is supported by most cloud-init versions; use configDrive for OpenStack-style images.
+  type: noCloud
+  # Cloud-init disk device settings inside the VM.
+  disk:
+    # Disk bus for the cloud-init ISO: virtio or sata.
+    bus: virtio
+  # Structured cloud-config values used to generate the user-data automatically.
+  # Ignored when userData / userDataBase64 / userDataSecretRef is set.
+  config:
+    # Default OS user created by cloud-init.
+    username: ubuntu
+    # Password for the default user. Leave empty to disable password login.
+    password: ""
+    # Force password change on first login.
+    passwordExpire: false
+    # Allow SSH password authentication (set to true only when needed; prefer key-based auth).
+    sshPasswordAuth: false
+  # -- First-boot commands injected into cloud-init runcmd.
+  # Runs once on first boot, before rc.local but after cloud-init modules.
+  # Mutually exclusive with userData / userDataBase64 / userDataSecretRef.
+  firstBoot:
+    # List of shell commands to run on first boot.
+    # Example:
+    #   commands:
+    #     - systemctl enable --now qemu-guest-agent
+    #     - apt-get install -y htop
+    commands: []
+  # -- Raw user-data overrides (mutually exclusive with firstBoot.commands).
+  # Plain-text cloud-config or script. Takes precedence over config + firstBoot.
+  userData: ""
+  # Base64-encoded user-data. Takes precedence over userData.
+  userDataBase64: ""
+  # Name of a Secret whose "userdata" key contains the user-data. Takes precedence over userDataBase64.
+  userDataSecretRef: ""
+  # Plain-text network-config (cloud-init network v1/v2 YAML).
+  networkData: ""
+  # Base64-encoded network-config.
+  networkDataBase64: ""
+  # Name of a Secret whose "networkdata" key contains the network-config.
+  networkDataSecretRef: ""
+
+# -- Network interfaces
+interfaces:
+  # Masquerade interface — NAT via the pod network. Required for outbound internet access.
+  masquerade:
+    # Enable the masquerade (pod network NAT) interface.
+    enabled: true
+    # Interface name inside the VM.
+    name: default
+    # NIC model: virtio (recommended), e1000, rtl8139.
+    model: virtio
+  # Bridge interface — direct layer-2 access via Multus NetworkAttachmentDefinition.
+  bridge:
+    # Enable the bridge interface. Requires Multus CNI installed in the cluster.
+    enabled: false
+    # Interface name inside the VM.
+    name: bridge
+    # NIC model: virtio (recommended), e1000, rtl8139.
+    model: virtio
+    # CNI configuration for the NetworkAttachmentDefinition created by this chart.
+    config:
+      # Name of the NetworkAttachmentDefinition (and CNI network).
+      name: kubevirt-bridge
+      # CNI spec version.
+      cniVersion: "0.3.1"
+      # CNI plugin type.
+      type: bridge
+      # MTU for the bridge interface. Set to match your physical network MTU minus encapsulation overhead.
+      mtu: 1300
+
+# -- NetworkPolicy for the VM pod
+networkPolicy:
+  # Enable NetworkPolicy for the virt-launcher pod.
+  enabled: false
+  # Extra annotations to add to the NetworkPolicy.
+  annotations: {}
+  # Extra labels to add to the NetworkPolicy.
+  additionalLabels: {}
+  # Additional pod selector labels used to target the VM pod (merged with chart-managed labels).
+  podLabels: {}
+  # Ingress rules. Empty list means no ingress is allowed when NetworkPolicy is enabled.
+  ingress: []
+  # Egress rules. Empty list means no egress is allowed when NetworkPolicy is enabled.
+  egress: []
+  # NetworkPolicy for the CDI importer pod (controls traffic during disk import).
+  cdi:
+    # Enable NetworkPolicy for the CDI importer pod.
+    enabled: false
+    # Ingress rules for the CDI importer pod.
+    ingress: []
+    # Egress rules for the CDI importer pod.
+    # Default allows all outbound traffic so the importer can reach image sources.
+    egress:
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+
+# -- SSH public key injection via KubeVirt accessCredentials
+ssh:
+  # Enable SSH key injection. Keys are stored in Secrets and propagated into the VM via cloud-init.
+  enabled: false
+  # Map of named SSH public keys to inject into the default user's authorized_keys.
+  # Key = arbitrary name (used as the Secret name suffix), value = public key string.
+  # Example:
+  #   pubkeys:
+  #     laptop: "ssh-ed25519 AAAA... user@laptop"
+  #     workstation: "ssh-ed25519 AAAA... user@workstation"
+  pubkeys:
+    example: |-
+      ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyReplaceMe user@example

@@ -1,0 +1,29 @@
+KubeVirt VM {{ include "kubevirt-vm.fullname" . }} has been rendered.
+
+Inspect the primary resources:
+
+  kubectl get vm {{ include "kubevirt-vm.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl get vmi {{ include "kubevirt-vm.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl get dv {{ include "kubevirt-vm.rootDataVolumeName" . }} -n {{ .Release.Namespace }}
+
+Describe the VM and DataVolume:
+
+  kubectl describe vm {{ include "kubevirt-vm.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl describe dv {{ include "kubevirt-vm.rootDataVolumeName" . }} -n {{ .Release.Namespace }}
+
+{{- if .Values.interfaces.bridge.enabled }}
+Bridge networking is enabled. Inspect the chart-managed NetworkAttachmentDefinition:
+
+  kubectl get network-attachment-definition {{ include "kubevirt-vm.bridgeNetworkAttachmentDefinitionName" . }} -n {{ .Release.Namespace }}
+{{- end }}
+
+{{- if .Values.ssh.enabled }}
+SSH public key Secrets were rendered for accessCredentials propagation.
+{{- end }}
+
+Runtime prerequisites:
+
+  - KubeVirt CRDs and controllers must be installed.
+  - CDI must be installed because this chart renders a DataVolumeTemplate.
+  - Multus must be installed when interfaces.bridge.enabled=true.
+  - Upload sources require the CDI upload workflow before the VM can boot successfully.
