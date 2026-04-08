@@ -193,6 +193,7 @@ Use `sourceRef` to provision from a pre-existing CDI `DataSource` (e.g. maintain
 | `interfaces.masquerade.enabled` | Enable pod-network masquerade (NAT) interface. Required for outbound internet access | `true` |
 | `interfaces.masquerade.name` | Interface name inside the VM | `default` |
 | `interfaces.masquerade.model` | NIC model: `virtio` (recommended), `e1000`, `rtl8139` | `virtio` |
+| `interfaces.masquerade.ports` | Ports to expose through the masquerade NAT. KubeVirt creates iptables DNAT rules only for listed ports — required for `virtctl ssh` / `virtctl vnc` to reach the VM. Set to `[]` for permissive (all-ports) mode | `[{port: 22, protocol: TCP}]` |
 | `interfaces.bridge.enabled` | Enable bridge interface. Requires Multus CNI | `false` |
 | `interfaces.bridge.name` | Interface name inside the VM | `bridge` |
 | `interfaces.bridge.model` | NIC model: `virtio` (recommended), `e1000`, `rtl8139` | `virtio` |

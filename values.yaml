@@ -241,6 +241,17 @@ interfaces:
     name: default
     # NIC model: virtio (recommended), e1000, rtl8139.
     model: virtio
+    # Ports to expose from the VM through the masquerade NAT.
+    # KubeVirt sets up iptables DNAT rules only for listed ports, which is required for
+    # inbound connections (including virtctl ssh / virtctl vnc) to reach the VM.
+    # Leave empty to forward all ports (permissive mode, not recommended for production).
+    # Example:
+    #   ports:
+    #     - port: 22
+    #       protocol: TCP
+    ports:
+      - port: 22
+        protocol: TCP
   # Bridge interface — direct layer-2 access via Multus NetworkAttachmentDefinition.
   bridge:
     # Enable the bridge interface. Requires Multus CNI installed in the cluster.

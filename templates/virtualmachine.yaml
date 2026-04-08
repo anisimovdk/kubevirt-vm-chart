@@ -242,6 +242,10 @@ spec:
             - name: {{ .Values.interfaces.masquerade.name }}
               masquerade: {}
               model: {{ .Values.interfaces.masquerade.model }}
+              {{- with .Values.interfaces.masquerade.ports }}
+              ports:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
             {{- end }}
             {{- if .Values.interfaces.bridge.enabled }}
             - name: {{ .Values.interfaces.bridge.name }}
