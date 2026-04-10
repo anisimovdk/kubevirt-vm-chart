@@ -252,6 +252,10 @@ spec:
               bridge: {}
               model: {{ .Values.interfaces.bridge.model }}
             {{- end }}
+          {{- with .Values.extraFilesystems }}
+          filesystems:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           rng: {}
         memory:
           guest: {{ .Values.memory }}
@@ -301,4 +305,7 @@ spec:
             networkData: |-
               {{- .Values.cloudInit.networkData | nindent 14 }}
             {{- end }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}

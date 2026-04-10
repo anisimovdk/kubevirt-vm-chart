@@ -2,7 +2,7 @@ apiVersion: v2
 name: kubevirt-vm
 description: Helm chart for KubeVirt virtual machines
 type: application
-version: 0.1.1
+version: 0.2.0
 appVersion: "v1.8.1"
 keywords:
   - kubevirt

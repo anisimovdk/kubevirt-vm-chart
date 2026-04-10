@@ -223,6 +223,16 @@ Use `sourceRef` to provision from a pre-existing CDI `DataSource` (e.g. maintain
 | `ssh.enabled` | Enable SSH key injection via KubeVirt `accessCredentials` | `false` |
 | `ssh.pubkeys` | Map of named SSH public keys. Key = Secret name suffix, value = public key string | Example key included |
 
+### Extra Filesystems and Volumes
+
+Use `extraFilesystems` and `extraVolumes` together to share a `PersistentVolumeClaim`
+(or any other KubeVirt volume source) into the guest via virtio-fs.
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `extraFilesystems` | List of `domain.devices.filesystems` entries rendered verbatim into the VM spec. Each entry requires a matching volume in `extraVolumes` | `[]` |
+| `extraVolumes` | List of KubeVirt volume entries appended to the VM `volumes` list. Accepts any KubeVirt volume source | `[]` |
+
 ## Root Volume Sources
 
 When `rootVolume.sourceRef.enabled=false`, the chart renders `dataVolumeTemplates[0].spec.source` using `rootVolume.source.type`.
@@ -311,6 +321,38 @@ rootVolume:
 ```
 
 Use `Halted` for upload workflows so the VM does not try to boot before the upload completes.
+
+### Shared PVC via virtiofs
+
+Mount a `ReadWriteMany` PVC into the guest using virtio-fs:
+
+```yaml
+extraFilesystems:
+  - name: shared-data
+    virtiofs: {}
+
+extraVolumes:
+  - name: shared-data
+    persistentVolumeClaim:
+      claimName: my-shared-pvc
+```
+
+Inside the guest, mount it manually:
+
+```bash
+mount -t virtiofs shared-data /mnt/shared-data
+```
+
+Or persist via `/etc/fstab` using `firstBoot.commands`:
+
+```yaml
+cloudInit:
+  firstBoot:
+    commands:
+      - mkdir -p /mnt/shared-data
+      - echo "shared-data /mnt/shared-data virtiofs defaults,_netdev 0 0" >> /etc/fstab
+      - mount -a
+```
 
 ## Development
 

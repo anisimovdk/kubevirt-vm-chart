@@ -311,3 +311,21 @@ ssh:
   pubkeys:
     example: |-
       ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyReplaceMe user@example
+
+# -- Extra virtiofs filesystems to expose into the VM.
+# Each entry is rendered verbatim under domain.devices.filesystems.
+# A corresponding volume must be provided in extraVolumes.
+# Example:
+#   extraFilesystems:
+#     - name: shared-data
+#       virtiofs: {}
+extraFilesystems: []
+
+# -- Extra volumes to attach to the VM (appended after the cloud-init volume).
+# Accepts any KubeVirt volume source (persistentVolumeClaim, configMap, secret, …).
+# Example:
+#   extraVolumes:
+#     - name: shared-data
+#       persistentVolumeClaim:
+#         claimName: my-pvc
+extraVolumes: []
